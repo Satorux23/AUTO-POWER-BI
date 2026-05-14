@@ -1,91 +1,102 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import os
 
-st.set_page_config(page_title="Dashboard Dinâmico", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="BI Universal", layout="wide", initial_sidebar_state="expanded")
 
-st.title("📊 Gerador Automático de Dashboard")
+st.title("📊 Seu Power BI Universal")
+st.markdown("Faça o upload de qualquer Excel e crie seus próprios cruzamentos de dados.")
 
-# --- A MÁGICA AQUI: LENDO DIRETO DO COLAB ---
-arquivo_teste = 'planilha_teste_dashboard.xlsx'
-df = None
+# Upload do arquivo
+arquivo = st.file_uploader("Suba qualquer planilha (Excel ou CSV)", type=['xlsx', 'csv'])
 
-# O site verifica se o arquivo já existe no mesmo lugar que ele
-if os.path.exists(arquivo_teste):
-    st.success(f"✅ Arquivo local '{arquivo_teste}' detectado automaticamente!")
-    df = pd.read_excel(arquivo_teste)
-else:
-    # Se não achar, ele mostra o botão de upload normal
-    arquivo = st.file_uploader("Selecione a sua base de dados (Excel ou CSV)", type=['xlsx', 'csv'])
-    if arquivo:
+if arquivo:
+    try:
+        # Lê qualquer arquivo sem importar o que tem dentro
         if arquivo.name.endswith('.csv'):
             df = pd.read_csv(arquivo)
         else:
             df = pd.read_excel(arquivo)
-
-# Se o 'df' foi preenchido (seja pelo upload ou arquivo automático), roda o dashboard
-if df is not None:
-    try:
+        
+        st.success("✅ Base de dados carregada! Agora monte seu gráfico.")
+        
+        # Mapeia dinamicamente TODAS as colunas do seu arquivo
         colunas_todas = df.columns.tolist()
         colunas_numericas = df.select_dtypes(include=['number']).columns.tolist()
-        colunas_categoricas = df.select_dtypes(exclude=['number']).columns.tolist()
+        colunas_texto = df.select_dtypes(exclude=['number']).columns.tolist()
 
-        st.sidebar.header("🔍 Filtros Dinâmicos")
+        # --- MENU LATERAL (FILTROS UNIVERSAIS) ---
+        st.sidebar.header("🔍 Filtros")
         
-        if colunas_categoricas:
-            coluna_filtro = st.sidebar.selectbox("Escolha uma coluna para filtrar:", colunas_categoricas)
-            valores_unicos = df[coluna_filtro].dropna().unique().tolist()
-            selecao = st.sidebar.multiselect("Selecione os valores:", valores_unicos, default=valores_unicos)
+        if colunas_texto:
+            coluna_filtro = st.sidebar.selectbox("Filtrar planilha usando a coluna:", ["Nenhum Filtro"] + colunas_texto)
             
-            if selecao:
-                df_filtrado = df[df[coluna_filtro].isin(selecao)]
+            if coluna_filtro != "Nenhum Filtro":
+                valores_unicos = df[coluna_filtro].dropna().unique().tolist()
+                selecao = st.sidebar.multiselect(f"Selecione o que deseja ver em '{coluna_filtro}':", valores_unicos, default=valores_unicos)
+                
+                if selecao:
+                    df_filtrado = df[df[coluna_filtro].isin(selecao)]
+                else:
+                    df_filtrado = df
             else:
                 df_filtrado = df
         else:
             df_filtrado = df
 
-        st.markdown("### 📈 Resumo Geral")
-        col1, col2, col3 = st.columns(3)
-        
-        col1.metric("Total de Registros (Linhas)", len(df_filtrado))
-        
-        if colunas_numericas:
-            coluna_kpi = colunas_numericas[-1] # Pega a última coluna numérica (Valor Total)
-            soma_total = df_filtrado[coluna_kpi].sum()
-            media_total = df_filtrado[coluna_kpi].mean()
-            
-            col2.metric(f"Soma de {coluna_kpi}", f"R$ {soma_total:,.2f}")
-            col3.metric(f"Média de {coluna_kpi}", f"R$ {media_total:,.2f}")
-
         st.divider()
 
-        st.markdown("### 📊 Análise Visual")
-        c1, c2 = st.columns(2)
-
-        with c1:
-            st.markdown("**Gráfico de Barras**")
-            eixo_x = st.selectbox("Eixo X (Categorias):", colunas_todas, index=1) # Puxa Vendedor
-            eixo_y = st.selectbox("Eixo Y (Valores):", colunas_numericas, index=0) if colunas_numericas else None
+        # --- CONSTRUTOR DE GRÁFICOS UNIVERSAL ---
+        st.markdown("### 🛠️ Construtor de Gráficos")
+        
+        # Aqui você escolhe o que quer cruzar com o que
+        col_opcoes1, col_opcoes2, col_opcoes3 = st.columns(3)
+        
+        with col_opcoes1:
+            tipo_grafico = st.selectbox("Tipo de Gráfico:", ["Barras", "Linha", "Dispersão", "Pizza"])
             
-            if eixo_y:
+        with col_opcoes2:
+            # Pode escolher QUALQUER coluna para a base do gráfico
+            eixo_x = st.selectbox("Eixo X (Base/Categorias):", colunas_todas)
+            
+        with col_opcoes3:
+            # Pega só as colunas numéricas para fazer os cálculos
+            if colunas_numericas:
+                eixo_y = st.selectbox("Eixo Y (Valores Numéricos):", colunas_numericas)
+            else:
+                eixo_y = None
+                st.warning("Seu Excel não tem colunas com números.")
+
+        # --- RENDERIZAÇÃO MÁGICA DOS GRÁFICOS ---
+        if eixo_y:
+            st.markdown("---")
+            
+            # Gráfico de BARRAS
+            if tipo_grafico == "Barras":
                 df_agrupado = df_filtrado.groupby(eixo_x)[eixo_y].sum().reset_index()
-                fig_bar = px.bar(df_agrupado, x=eixo_x, y=eixo_y, text_auto='.2s', color=eixo_x)
-                st.plotly_chart(fig_bar, use_container_width=True)
+                fig = px.bar(df_agrupado, x=eixo_x, y=eixo_y, text_auto='.2s', color=eixo_x, title=f"Soma de {eixo_y} por {eixo_x}")
+                st.plotly_chart(fig, use_container_width=True)
 
-        with c2:
-            st.markdown("**Gráfico de Proporção (Pizza)**")
-            if colunas_numericas and colunas_categoricas:
-                col_pizza = st.selectbox("Dividir por:", colunas_categoricas, index=2) # Puxa Região
-                val_pizza = st.selectbox("Medida de:", colunas_numericas, index=0)
-                
-                fig_pie = px.pie(df_filtrado, names=col_pizza, values=val_pizza, hole=0.4)
-                st.plotly_chart(fig_pie, use_container_width=True)
+            # Gráfico de LINHA
+            elif tipo_grafico == "Linha":
+                # Ideal para cruzar datas com valores
+                df_agrupado = df_filtrado.groupby(eixo_x)[eixo_y].sum().reset_index()
+                fig = px.line(df_agrupado, x=eixo_x, y=eixo_y, markers=True, title=f"Evolução de {eixo_y} por {eixo_x}")
+                st.plotly_chart(fig, use_container_width=True)
 
-        with st.expander("Ver Tabela de Dados (Brutos)"):
+            # Gráfico de DISPERSÃO
+            elif tipo_grafico == "Dispersão":
+                fig = px.scatter(df_filtrado, x=eixo_x, y=eixo_y, color=eixo_x, title=f"Dispersão: {eixo_y} vs {eixo_x}")
+                st.plotly_chart(fig, use_container_width=True)
+
+            # Gráfico de PIZZA
+            elif tipo_grafico == "Pizza":
+                fig = px.pie(df_filtrado, names=eixo_x, values=eixo_y, hole=0.4, title=f"Proporção de {eixo_y} em {eixo_x}")
+                st.plotly_chart(fig, use_container_width=True)
+
+        # Mostrar os dados
+        with st.expander("Ver Tabela de Dados Original"):
             st.dataframe(df_filtrado)
 
     except Exception as e:
-        st.error(f"Ocorreu um erro: {e}")
-else:
-    st.info("👆 Aguardando os dados...")
+        st.error(f"Erro ao processar arquivo: {e}")
