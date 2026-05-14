@@ -2,101 +2,92 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-st.set_page_config(page_title="BI Universal", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Power BI 2.0", layout="wide")
 
-st.title("📊 Seu Power BI Universal")
-st.markdown("Faça o upload de qualquer Excel e crie seus próprios cruzamentos de dados.")
+st.title("🚀 Power BI 2.0 - Modo Avançado")
+st.markdown("Crie cruzamentos multidimensionais. Adicione múltiplos Eixos Y e quebre os dados por Cor.")
 
-# Upload do arquivo
-arquivo = st.file_uploader("Suba qualquer planilha (Excel ou CSV)", type=['xlsx', 'csv'])
+arquivo = st.file_uploader("Suba a planilha (Excel ou CSV)", type=['xlsx', 'csv'])
 
 if arquivo:
     try:
-        # Lê qualquer arquivo sem importar o que tem dentro
-        if arquivo.name.endswith('.csv'):
-            df = pd.read_csv(arquivo)
-        else:
-            df = pd.read_excel(arquivo)
+        # Leitura Inteligente
+        df = pd.read_csv(arquivo) if arquivo.name.endswith('.csv') else pd.read_excel(arquivo)
         
-        st.success("✅ Base de dados carregada! Agora monte seu gráfico.")
-        
-        # Mapeia dinamicamente TODAS as colunas do seu arquivo
         colunas_todas = df.columns.tolist()
         colunas_numericas = df.select_dtypes(include=['number']).columns.tolist()
         colunas_texto = df.select_dtypes(exclude=['number']).columns.tolist()
 
-        # --- MENU LATERAL (FILTROS UNIVERSAIS) ---
-        st.sidebar.header("🔍 Filtros")
+        # --- FILTROS LATERAIS AUTOMÁTICOS ---
+        st.sidebar.header("🔍 Filtros Avançados")
+        df_filtrado = df.copy()
         
+        # Cria um filtro para cada coluna de texto (limitado a 5 para a tela não ficar gigante)
         if colunas_texto:
-            coluna_filtro = st.sidebar.selectbox("Filtrar planilha usando a coluna:", ["Nenhum Filtro"] + colunas_texto)
-            
-            if coluna_filtro != "Nenhum Filtro":
-                valores_unicos = df[coluna_filtro].dropna().unique().tolist()
-                selecao = st.sidebar.multiselect(f"Selecione o que deseja ver em '{coluna_filtro}':", valores_unicos, default=valores_unicos)
-                
+            for col in colunas_texto[:5]:
+                valores = df[col].dropna().unique().tolist()
+                selecao = st.sidebar.multiselect(f"Filtrar por {col}:", valores, default=valores)
                 if selecao:
-                    df_filtrado = df[df[coluna_filtro].isin(selecao)]
-                else:
-                    df_filtrado = df
-            else:
-                df_filtrado = df
-        else:
-            df_filtrado = df
+                    df_filtrado = df_filtrado[df_filtrado[col].isin(selecao)]
 
         st.divider()
 
-        # --- CONSTRUTOR DE GRÁFICOS UNIVERSAL ---
-        st.markdown("### 🛠️ Construtor de Gráficos")
+        # --- CONSTRUTOR MULTIDIMENSIONAL ---
+        st.markdown("### 🛠️ Montagem do Gráfico")
         
-        # Aqui você escolhe o que quer cruzar com o que
-        col_opcoes1, col_opcoes2, col_opcoes3 = st.columns(3)
+        c1, c2, c3, c4 = st.columns(4)
         
-        with col_opcoes1:
-            tipo_grafico = st.selectbox("Tipo de Gráfico:", ["Barras", "Linha", "Dispersão", "Pizza"])
+        with c1:
+            tipo_grafico = st.selectbox("Tipo de Gráfico:", ["Barras (Agrupadas)", "Linhas", "Área", "Dispersão"])
+        
+        with c2:
+            eixo_x = st.selectbox("Eixo X (Base):", colunas_todas)
+        
+        with c3:
+            # AQUI ESTÁ A MÁGICA: O usuário pode adicionar quantos eixos Y quiser
+            eixo_y = st.multiselect("Eixo Y (Adicione Múltiplos):", colunas_numericas, default=[colunas_numericas[0]] if colunas_numericas else [])
             
-        with col_opcoes2:
-            # Pode escolher QUALQUER coluna para a base do gráfico
-            eixo_x = st.selectbox("Eixo X (Base/Categorias):", colunas_todas)
-            
-        with col_opcoes3:
-            # Pega só as colunas numéricas para fazer os cálculos
-            if colunas_numericas:
-                eixo_y = st.selectbox("Eixo Y (Valores Numéricos):", colunas_numericas)
-            else:
-                eixo_y = None
-                st.warning("Seu Excel não tem colunas com números.")
+        with c4:
+            # AQUI ADICIONAMOS A COR/LEGENDA
+            cor = st.selectbox("Dividir por Cor (Opcional):", ["Nenhum"] + colunas_texto)
 
-        # --- RENDERIZAÇÃO MÁGICA DOS GRÁFICOS ---
+        # --- RENDERIZAÇÃO ---
         if eixo_y:
             st.markdown("---")
             
-            # Gráfico de BARRAS
-            if tipo_grafico == "Barras":
-                df_agrupado = df_filtrado.groupby(eixo_x)[eixo_y].sum().reset_index()
-                fig = px.bar(df_agrupado, x=eixo_x, y=eixo_y, text_auto='.2s', color=eixo_x, title=f"Soma de {eixo_y} por {eixo_x}")
+            try:
+                # Lógica de agrupamento para a matemática ficar correta no gráfico
+                if cor != "Nenhum":
+                    # Agrupa pelo X e pela Cor
+                    df_agrupado = df_filtrado.groupby([eixo_x, cor])[eixo_y].sum().reset_index()
+                    param_cor = cor
+                else:
+                    df_agrupado = df_filtrado.groupby(eixo_x)[eixo_y].sum().reset_index()
+                    param_cor = None
+
+                # Gerando os gráficos com base na escolha
+                if tipo_grafico == "Barras (Agrupadas)":
+                    fig = px.bar(df_agrupado, x=eixo_x, y=eixo_y, color=param_cor, barmode="group")
+                
+                elif tipo_grafico == "Linhas":
+                    fig = px.line(df_agrupado, x=eixo_x, y=eixo_y, color=param_cor, markers=True)
+                
+                elif tipo_grafico == "Área":
+                    fig = px.area(df_agrupado, x=eixo_x, y=eixo_y, color=param_cor)
+                
+                elif tipo_grafico == "Dispersão":
+                    # Dispersão não agrupa, mostra os pontos brutos
+                    fig = px.scatter(df_filtrado, x=eixo_x, y=eixo_y, color=param_cor if cor != "Nenhum" else None)
+
+                # Deixa o gráfico mais limpo e profissional
+                fig.update_layout(hovermode="x unified")
                 st.plotly_chart(fig, use_container_width=True)
 
-            # Gráfico de LINHA
-            elif tipo_grafico == "Linha":
-                # Ideal para cruzar datas com valores
-                df_agrupado = df_filtrado.groupby(eixo_x)[eixo_y].sum().reset_index()
-                fig = px.line(df_agrupado, x=eixo_x, y=eixo_y, markers=True, title=f"Evolução de {eixo_y} por {eixo_x}")
-                st.plotly_chart(fig, use_container_width=True)
+            except Exception as e:
+                st.warning("⚠️ Os dados selecionados não combinam perfeitamente para este formato. Tente remover a 'Cor' ou alterar o Eixo X.")
 
-            # Gráfico de DISPERSÃO
-            elif tipo_grafico == "Dispersão":
-                fig = px.scatter(df_filtrado, x=eixo_x, y=eixo_y, color=eixo_x, title=f"Dispersão: {eixo_y} vs {eixo_x}")
-                st.plotly_chart(fig, use_container_width=True)
-
-            # Gráfico de PIZZA
-            elif tipo_grafico == "Pizza":
-                fig = px.pie(df_filtrado, names=eixo_x, values=eixo_y, hole=0.4, title=f"Proporção de {eixo_y} em {eixo_x}")
-                st.plotly_chart(fig, use_container_width=True)
-
-        # Mostrar os dados
-        with st.expander("Ver Tabela de Dados Original"):
+        with st.expander("Ver Tabela de Dados Atualizada"):
             st.dataframe(df_filtrado)
 
     except Exception as e:
-        st.error(f"Erro ao processar arquivo: {e}")
+        st.error(f"Erro ao ler a planilha: {e}")
